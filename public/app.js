@@ -26,6 +26,7 @@ const state = {
   presetDirty: false,
   providerPresetChoice: {},
   revealedSecrets: {},
+  lastHashScrolled: '',
 };
 
 const root = document.querySelector('#app');
@@ -118,6 +119,128 @@ function scheduleKindLabel(kind) {
   return kind === 'every' ? '循环' : kind === 'at' ? '单次' : kind === 'cron' ? 'Cron' : '未知';
 }
 
+function importanceClass(importance) {
+  return importance === '核心' ? 'core' : importance === '重点' ? 'high' : importance === '常用' ? 'mid' : 'low';
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text ?? '')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
+function renderMarkdownPreview(source) {
+  const lines = String(source ?? '').replaceAll('\r\n', '\n').split('\n');
+  const blocks = [];
+  let paragraph = [];
+  let listItems = [];
+  let quoteLines = [];
+  let codeLines = [];
+  let inCode = false;
+  let codeFence = '';
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (!listItems.length) return;
+    blocks.push(`<ul>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</ul>`);
+    listItems = [];
+  };
+
+  const flushQuote = () => {
+    if (!quoteLines.length) return;
+    blocks.push(`<blockquote>${quoteLines.map((item) => `<p>${renderInlineMarkdown(item)}</p>`).join('')}</blockquote>`);
+    quoteLines = [];
+  };
+
+  const flushCode = () => {
+    if (!codeFence && !codeLines.length) return;
+    blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+    codeLines = [];
+    codeFence = '';
+  };
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      if (inCode) {
+        flushCode();
+        inCode = false;
+      } else {
+        inCode = true;
+        codeFence = line.slice(3).trim();
+      }
+      continue;
+    }
+
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      const level = headingMatch[1].length;
+      blocks.push(`<h${level}>${renderInlineMarkdown(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      blocks.push('<hr />');
+      continue;
+    }
+
+    const listMatch = trimmed.match(/^[-*+]\s+(.*)$/);
+    if (listMatch) {
+      flushParagraph();
+      flushQuote();
+      listItems.push(listMatch[1]);
+      continue;
+    }
+
+    const quoteMatch = trimmed.match(/^>\s?(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      quoteLines.push(quoteMatch[1]);
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  flushQuote();
+  if (inCode) {
+    flushCode();
+  }
+
+  return blocks.join('') || '<p>当前文件没有可预览的文本。</p>';
+}
+
 function getAgent() {
   return state.overview?.agents?.find((agent) => agent.id === state.selectedAgentId) ?? null;
 }
@@ -135,6 +258,10 @@ function getSelectedCron(agentId) {
   state.cronDraft = JSON.stringify(jobs[0], null, 2);
   state.cronDirty = false;
   return jobs[0];
+}
+
+function getSelectedMarkdownFile(agent) {
+  return agent?.markdownFiles?.find((file) => file.relativePath === state.selectedFilePath) ?? null;
 }
 
 function getPresets() {
@@ -282,67 +409,100 @@ function renderNotice() {
   return `<div class="notice ${state.notice.kind === 'ok' ? 'ok' : 'error'}">${escapeHtml(state.notice.text)}</div>`;
 }
 
+function syncHashScroll(force = false) {
+  const hash = window.location.hash;
+  const panel = new URLSearchParams(window.location.search).get('panel');
+  const targetSelector = hash || (panel ? `#${panel}` : '');
+  if (!targetSelector) return;
+  if (!force && state.lastHashScrolled === targetSelector) return;
+  const target = document.querySelector(targetSelector);
+  if (!target) return;
+  state.lastHashScrolled = targetSelector;
+  window.requestAnimationFrame(() => {
+    const scrollRoot = document.documentElement;
+    const previousBehavior = scrollRoot.style.scrollBehavior;
+    scrollRoot.style.scrollBehavior = 'auto';
+    const top = target.getBoundingClientRect().top + window.scrollY - 18;
+    window.scrollTo(0, Math.max(0, top));
+    window.setTimeout(() => {
+      scrollRoot.style.scrollBehavior = previousBehavior;
+    }, 0);
+  });
+}
+
 function renderRail() {
-  const summary = state.overview?.summary;
+  const summary = state.overview?.summary ?? {};
   return `
-    <aside class="monitor-rail">
-      <div class="rail-brand">
-        <p class="eyebrow">OpenClaw</p>
+    <aside class="sidebar-shell">
+      <div class="sidebar-top">
+        <p class="eyebrow">OpenClaw Monitor</p>
         <h1>小龙虾总控台</h1>
-        <p class="brand-sub">切 Key、看任务、查状态、改 Markdown，都在一个本地面板里完成。</p>
-        <div class="rail-actions">
-          <a class="ghost-button" href="/">项目页</a>
-          <button class="ghost-button" type="button" data-action="refresh">刷新总览</button>
+        <p class="sidebar-copy">局部滚动、重点优先、直接改配置。这个页面是拿来真的盯盘和动手的，不是展示墙。</p>
+        <div class="sidebar-actions">
+          <a class="ghost-button" href="/">首页</a>
+          <button class="ghost-button" type="button" data-action="refresh">刷新</button>
         </div>
       </div>
-      <section class="rail-summary">
-        <div class="mini-stat"><span>活跃</span><strong>${formatNumber(summary?.activeCount)}</strong></div>
-        <div class="mini-stat"><span>提醒</span><strong>${formatNumber(summary?.alerts?.critical + summary?.alerts?.warn)}</strong></div>
-        <div class="mini-stat"><span>今日 Token</span><strong>${formatNumber(summary?.usage?.today?.total)}</strong></div>
-        <div class="mini-stat"><span>预设池</span><strong>${formatNumber(summary?.providerPresetCount)}</strong></div>
-      </section>
-      <section class="rail-section">
-        <div class="panel-subhead">
-          <strong>小龙虾列表</strong>
-          <span class="muted">${formatNumber(summary?.agentCount)} 只</span>
+      <div class="sidebar-stat-grid">
+        <article class="sidebar-stat">
+          <span>活跃</span>
+          <strong>${formatNumber(summary.activeCount)}</strong>
+        </article>
+        <article class="sidebar-stat">
+          <span>提醒</span>
+          <strong>${formatNumber((summary.alerts?.critical ?? 0) + (summary.alerts?.warn ?? 0))}</strong>
+        </article>
+        <article class="sidebar-stat">
+          <span>今日 Token</span>
+          <strong>${formatNumber(summary.usage?.today?.total)}</strong>
+        </article>
+        <article class="sidebar-stat">
+          <span>预设池</span>
+          <strong>${formatNumber(summary.providerPresetCount)}</strong>
+        </article>
+      </div>
+      <section class="sidebar-section">
+        <div class="section-head compact">
+          <strong>全部小龙虾</strong>
+          <span>${formatNumber(summary.agentCount)} 只</span>
         </div>
-        <div class="rail-list">
+        <div class="sidebar-scroll">
           ${(state.overview?.agents ?? [])
             .map(
               (agent) => `
-                <button class="agent-card ${agent.id === state.selectedAgentId ? 'active' : ''}" type="button" data-action="select-agent" data-agent-id="${escapeHtml(agent.id)}">
-                  <div class="agent-card-head">
+                <button class="nav-agent ${agent.id === state.selectedAgentId ? 'active' : ''}" type="button" data-action="select-agent" data-agent-id="${escapeHtml(agent.id)}">
+                  <div class="nav-agent-top">
                     <strong>${escapeHtml(agent.name)}</strong>
-                    <span class="status-chip ${statusClass(agent.status)}">${statusLabel(agent.status)}</span>
+                    <span class="status-dot ${statusClass(agent.status)}"></span>
                   </div>
                   <p>今日 ${formatNumber(agent.tokens.today.total)} token</p>
-                  <p class="muted">最近活动 ${relativeTime(agent.lastActivityAt)}</p>
+                  <small>${relativeTime(agent.lastActivityAt)}</small>
                 </button>
               `,
             )
             .join('')}
         </div>
       </section>
-      <section class="rail-section compact">
-        <div class="panel-subhead">
-          <strong>全局告警</strong>
-          <span class="muted">${formatNumber(state.overview?.alerts?.length)}</span>
+      <section class="sidebar-section">
+        <div class="section-head compact">
+          <strong>全局提醒</strong>
+          <span>${formatNumber(state.overview?.alerts?.length)}</span>
         </div>
-        <div class="alert-list compact">
+        <div class="sidebar-alerts">
           ${
             state.overview?.alerts?.length
               ? state.overview.alerts
                   .slice(0, 4)
                   .map(
                     (alert) => `
-                      <article class="alert-item ${alertClass(alert.severity)}">
+                      <article class="sidebar-alert ${alertClass(alert.severity)}">
                         <strong>${escapeHtml(alert.title)}</strong>
                         <p>${escapeHtml(alert.detail)}</p>
                       </article>
                     `,
                   )
                   .join('')
-              : '<p class="empty-state">目前没有全局告警。</p>'
+              : '<p class="empty-state">暂无全局提醒。</p>'
           }
         </div>
       </section>
@@ -354,36 +514,40 @@ function renderFleetPanel() {
   const summary = state.overview?.summary ?? {};
   const usage = summary.usage ?? {};
   return `
-    <section class="panel hero-panel">
-      <div class="hero-layout fleet">
-        <div class="hero-copy">
-          <p class="eyebrow">舰队总览</p>
-          <h2 class="hero-title">这一页就是 OpenClaw 的本地总控台</h2>
-          <p class="hero-note">所有查询、替换和改写都直接走本地文件与本地服务，不额外调用 AI。</p>
-          <div class="hero-tags">
-            <span class="pill">最后刷新 ${formatDateTime(state.overview?.generatedAt)}</span>
-            <span class="pill">${escapeHtml(state.overview?.timezone || '')}</span>
-            <a class="pill link-pill" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">GitHub 仓库</a>
-          </div>
+    <section class="surface surface-hero">
+      <div class="hero-headline">
+        <div>
+          <p class="eyebrow">控制台</p>
+          <h2>把高频操作和实时状态压到同一屏里</h2>
+          <p class="hero-copyline">参考了实时仪表盘和复杂控制台的做法，这版把大段文本、列表和编辑器都改成局部滚动，避免一个模块无限拉长整页。</p>
         </div>
-        <div class="hero-highlight">
-          <div class="hero-highlight-card">
-            <span>在线态势</span>
-            <strong>${formatNumber(summary.activeCount)} / ${formatNumber(summary.agentCount)}</strong>
-            <small>活跃小龙虾 / 总数</small>
-          </div>
-          <div class="hero-highlight-card">
-            <span>待处理提醒</span>
-            <strong>${formatNumber(summary.alerts?.critical + summary.alerts?.warn)}</strong>
-            <small>严重 ${formatNumber(summary.alerts?.critical)} · 提醒 ${formatNumber(summary.alerts?.warn)}</small>
-          </div>
+        <div class="hero-meta">
+          <span class="meta-chip">刷新于 ${formatDateTime(state.overview?.generatedAt)}</span>
+          <span class="meta-chip">${escapeHtml(state.overview?.timezone || '')}</span>
+          <a class="meta-chip link" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">GitHub</a>
         </div>
       </div>
-      <div class="metric-grid fleet-grid">
-        ${renderUsageCard('全量累计', usage.total, 'accent')}
-        ${renderUsageCard('今天', usage.today)}
-        ${renderUsageCard('最近 1 小时', usage.last1h)}
-        ${renderUsageCard('最近 24 小时', usage.last24h)}
+      <div class="hero-stat-row">
+        <article class="hero-stat-card">
+          <span>舰队状态</span>
+          <strong>${formatNumber(summary.activeCount)} / ${formatNumber(summary.agentCount)}</strong>
+          <small>活跃 / 总数</small>
+        </article>
+        <article class="hero-stat-card">
+          <span>待处理提醒</span>
+          <strong>${formatNumber((summary.alerts?.critical ?? 0) + (summary.alerts?.warn ?? 0))}</strong>
+          <small>严重 ${formatNumber(summary.alerts?.critical)} · 提醒 ${formatNumber(summary.alerts?.warn)}</small>
+        </article>
+        <article class="hero-stat-card">
+          <span>今天</span>
+          <strong>${formatNumber(usage.today?.total)}</strong>
+          <small>成本 ${formatMoney(usage.today?.cost)}</small>
+        </article>
+        <article class="hero-stat-card">
+          <span>最近 24 小时</span>
+          <strong>${formatNumber(usage.last24h?.total)}</strong>
+          <small>成本 ${formatMoney(usage.last24h?.cost)}</small>
+        </article>
       </div>
     </section>
   `;
@@ -392,27 +556,27 @@ function renderFleetPanel() {
 function renderAlertPanel(agent) {
   const alerts = [...(state.overview?.alerts ?? []), ...(agent?.alerts ?? [])];
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="alerts-panel">
+      <div class="section-head">
         <div>
           <p class="eyebrow">告警中心</p>
-          <h2>全局和当前小龙虾的异常都放在这里</h2>
+          <h3>只保留需要你动手处理的内容</h3>
         </div>
-        <span class="muted">${formatNumber(alerts.length)} 条</span>
+        <span>${formatNumber(alerts.length)} 条</span>
       </div>
-      <div class="alert-list">
+      <div class="surface-scroll alert-stack">
         ${
           alerts.length
             ? alerts
                 .map(
                   (alert) => `
-                    <article class="alert-item ${alertClass(alert.severity)}">
-                      <div class="panel-subhead">
+                    <article class="alert-card ${alertClass(alert.severity)}">
+                      <div class="section-head compact">
                         <strong>${escapeHtml(alert.title)}</strong>
                         <span class="status-chip ${alertClass(alert.severity)}">${alertLabel(alert.severity)}</span>
                       </div>
                       <p>${escapeHtml(alert.detail)}</p>
-                      <small>${alert.scope === 'agent' ? `来自 ${escapeHtml(alert.agentId)}` : '全局告警'}</small>
+                      <small>${alert.scope === 'agent' ? `来自 ${escapeHtml(alert.agentId)}` : '全局'}</small>
                     </article>
                   `,
                 )
@@ -428,42 +592,44 @@ function renderPresetPanel() {
   const presets = getPresets();
   const selectedPreset = getSelectedPreset();
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="presets-panel">
+      <div class="section-head">
         <div>
           <p class="eyebrow">Key 预设池</p>
-          <h2>先维护预设，再一键套给指定小龙虾</h2>
+          <h3>先维护预设，再一键切换</h3>
         </div>
-        <button class="ghost-button" type="button" data-action="new-preset">新建空预设</button>
+        <button class="ghost-button" type="button" data-action="new-preset">新建预设</button>
       </div>
-      <div class="preset-layout">
-        <div class="preset-list">
-          ${
-            presets.length
-              ? presets
-                  .map(
-                    (preset) => `
-                      <button class="preset-item ${preset.id === state.selectedPresetId ? 'active' : ''}" type="button" data-action="select-preset" data-preset-id="${escapeHtml(preset.id)}">
-                        <strong>${escapeHtml(preset.name)}</strong>
-                        <p>${escapeHtml(preset.providerId || '未指定默认通道')}</p>
-                        <small>${escapeHtml(preset.baseUrl || '保留原地址')} · ${escapeHtml(preset.modelId || '保留原模型')}</small>
-                      </button>
-                    `,
-                  )
-                  .join('')
-              : '<p class="empty-state">还没有预设。先从某个当前通道抓一份，或者手动新建。</p>'
-          }
+      <div class="preset-shell">
+        <div class="preset-column">
+          <div class="surface-scroll preset-scroll">
+            ${
+              presets.length
+                ? presets
+                    .map(
+                      (preset) => `
+                        <button class="preset-list-item ${preset.id === state.selectedPresetId ? 'active' : ''}" type="button" data-action="select-preset" data-preset-id="${escapeHtml(preset.id)}">
+                          <strong>${escapeHtml(preset.name)}</strong>
+                          <p>${escapeHtml(preset.providerId || '未绑定默认通道')}</p>
+                          <small>${escapeHtml(preset.modelId || '保留当前模型')}</small>
+                        </button>
+                      `,
+                    )
+                    .join('')
+                : '<p class="empty-state">还没有预设。先从当前通道抓一份，或者直接新建。</p>'
+            }
+          </div>
         </div>
-        <form class="preset-editor" id="preset-form">
-          <div class="panel-subhead">
-            <strong>${escapeHtml(selectedPreset?.name || '正在编辑新预设')}</strong>
-            <span class="muted">${state.presetDirty ? '有未保存修改' : '已同步'}</span>
+        <form class="editor-card" id="preset-form">
+          <div class="section-head compact">
+            <strong>${escapeHtml(selectedPreset?.name || '新预设')}</strong>
+            <span>${state.presetDirty ? '未保存' : '已同步'}</span>
           </div>
           <div class="compact-grid">
-            <label>预设名称
+            <label>名称
               <input name="name" value="${escapeHtml(state.presetForm.name)}" autocomplete="off" />
             </label>
-            <label>默认通道 ID
+            <label>默认通道
               <input name="providerId" value="${escapeHtml(state.presetForm.providerId)}" autocomplete="off" />
             </label>
             <label>协议
@@ -483,16 +649,12 @@ function renderPresetPanel() {
             </div>
           </label>
           <label>备注
-            <textarea name="note">${escapeHtml(state.presetForm.note)}</textarea>
+            <textarea class="compact-textarea" name="note">${escapeHtml(state.presetForm.note)}</textarea>
           </label>
           <div class="row-actions">
-            <span class="muted">留空的字段在套用时会保留原值，不会强制覆盖。</span>
+            <span class="muted">空字段不会覆盖当前通道里的原值。</span>
             <div class="button-row">
-              ${
-                state.presetForm.id
-                  ? '<button class="ghost-button" type="button" data-action="delete-preset">删除预设</button>'
-                  : ''
-              }
+              ${state.presetForm.id ? '<button class="ghost-button" type="button" data-action="delete-preset">删除</button>' : ''}
               <button type="submit">保存预设</button>
             </div>
           </div>
@@ -505,55 +667,55 @@ function renderPresetPanel() {
 function renderAgentCommandPanel(agent) {
   const selectedPreset = getSelectedPreset();
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="agent-panel">
+      <div class="section-head">
         <div>
           <p class="eyebrow">当前小龙虾</p>
-          <h2>${escapeHtml(agent.name)} 的模型通道与快速切换</h2>
+          <h3>${escapeHtml(agent.name)} 的通道、状态和快速切换</h3>
         </div>
         <div class="inline-meta">
           <span class="status-chip ${statusClass(agent.status)}">${statusLabel(agent.status)}</span>
-          <span class="muted">最后活动 ${relativeTime(agent.lastActivityAt)}</span>
+          <span>${relativeTime(agent.lastActivityAt)}</span>
         </div>
       </div>
-      <div class="agent-header-grid">
-        <div class="agent-summary-card">
+      <div class="agent-overview-grid">
+        <article class="overview-card">
           <span>当前模型</span>
           <strong>${escapeHtml(agent.currentModel.provider || '未知')}</strong>
           <small>${escapeHtml(agent.currentModel.model || '未知')}</small>
-        </div>
-        <div class="agent-summary-card">
+        </article>
+        <article class="overview-card">
           <span>心跳</span>
           <strong>${agent.heartbeat.enabled ? '开启' : '关闭'}</strong>
           <small>${escapeHtml(agent.heartbeat.every || '未设置')}</small>
-        </div>
-        <div class="agent-summary-card">
+        </article>
+        <article class="overview-card">
           <span>Cron</span>
           <strong>${formatNumber(agent.cronSummary?.enabled)}</strong>
           <small>异常 ${formatNumber(agent.cronSummary?.failing)}</small>
-        </div>
-        <div class="agent-summary-card">
+        </article>
+        <article class="overview-card">
           <span>当前预设</span>
           <strong>${escapeHtml(selectedPreset?.name || '未选择')}</strong>
-          <small>${escapeHtml(selectedPreset?.providerId || '请先在左侧选择预设')}</small>
-        </div>
+          <small>${escapeHtml(selectedPreset?.providerId || '可直接在下方选择')}</small>
+        </article>
       </div>
-      <div class="provider-grid">
+      <div class="provider-wall">
         ${(agent.providers ?? [])
           .map((provider) => {
             const chosenPresetId = getChosenPresetId(agent.id, provider.id);
             return `
-              <form class="provider-card" data-provider-form="${escapeHtml(provider.id)}">
-                <div class="provider-top">
+              <form class="provider-editor" data-provider-form="${escapeHtml(provider.id)}">
+                <div class="section-head compact">
                   <div>
                     <strong>${escapeHtml(provider.id)}</strong>
                     <p class="muted">${escapeHtml(provider.modelIds.join('、') || '无模型')}</p>
                   </div>
-                  <span class="pill">${escapeHtml(provider.api || '未知协议')}</span>
+                  <span class="meta-chip subtle">${escapeHtml(provider.api || '未知协议')}</span>
                 </div>
-                <div class="soft-meta">
-                  <span class="pill">当前密钥 ${escapeHtml(provider.apiKeyMasked || '空')}</span>
-                  <span class="pill">预设 ${escapeHtml(getPresets().find((preset) => preset.id === chosenPresetId)?.name || '未选')}</span>
+                <div class="provider-meta">
+                  <span class="meta-chip">当前密钥 ${escapeHtml(provider.apiKeyMasked || '空')}</span>
+                  <span class="meta-chip">预设 ${escapeHtml(getPresets().find((preset) => preset.id === chosenPresetId)?.name || '未选')}</span>
                 </div>
                 <label>API Key
                   <div class="input-row">
@@ -576,12 +738,12 @@ function renderAgentCommandPanel(agent) {
                       .join('')}
                   </select>
                 </label>
-                <div class="row-actions">
+                <div class="row-actions wrap">
                   <button class="ghost-button" type="button" data-action="capture-provider" data-provider-id="${escapeHtml(provider.id)}">抓成预设</button>
                   <div class="button-row">
                     <button class="ghost-button" type="button" data-action="apply-preset-current" data-provider-id="${escapeHtml(provider.id)}">套给当前</button>
-                    <button class="ghost-button" type="button" data-action="apply-preset-all" data-provider-id="${escapeHtml(provider.id)}">同名通道全量套用</button>
-                    <button type="submit">保存当前通道</button>
+                    <button class="ghost-button" type="button" data-action="apply-preset-all" data-provider-id="${escapeHtml(provider.id)}">同名全量</button>
+                    <button type="submit">保存通道</button>
                   </div>
                 </div>
               </form>
@@ -595,22 +757,22 @@ function renderAgentCommandPanel(agent) {
 
 function renderTrafficPanel(agent) {
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="traffic-panel">
+      <div class="section-head">
         <div>
-          <p class="eyebrow">流量与消耗</p>
-          <h2>每只小龙虾的多时间窗 Token 统计</h2>
+          <p class="eyebrow">Token 与消耗</p>
+          <h3>多时间窗统计</h3>
         </div>
-        <span class="muted">最后请求 ${relativeTime(agent.lastRequest?.ts)}</span>
+        <span>${relativeTime(agent.lastRequest?.ts)}</span>
       </div>
-      <div class="metric-grid">
+      <div class="usage-grid">
         ${renderUsageCard('累计', agent.tokens.total, 'accent')}
         ${renderUsageCard('今天', agent.tokens.today)}
-        ${renderUsageCard('最近 1 小时', agent.tokens.last1h)}
-        ${renderUsageCard('最近 3 小时', agent.tokens.last3h)}
-        ${renderUsageCard('最近 6 小时', agent.tokens.last6h)}
-        ${renderUsageCard('最近 24 小时', agent.tokens.last24h)}
-        ${renderUsageCard('最近 7 天', agent.tokens.last7d)}
+        ${renderUsageCard('1 小时', agent.tokens.last1h)}
+        ${renderUsageCard('3 小时', agent.tokens.last3h)}
+        ${renderUsageCard('6 小时', agent.tokens.last6h)}
+        ${renderUsageCard('24 小时', agent.tokens.last24h)}
+        ${renderUsageCard('7 天', agent.tokens.last7d)}
       </div>
       <div class="trend-grid">
         ${renderTrendChart('过去 24 小时', agent.tokenTrend24h ?? [])}
@@ -623,36 +785,69 @@ function renderTrafficPanel(agent) {
 function renderHistoryPanel(agent) {
   const lastRequest = agent.lastRequest;
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface history-surface" id="history-panel">
+      <div class="section-head">
         <div>
           <p class="eyebrow">请求时间线</p>
-          <h2>最后一次请求和最近消息</h2>
+          <h3>最后一次请求与最近消息</h3>
         </div>
-        <span class="muted">${agent.requestHistory?.length || 0} 条最近记录</span>
+        <span>${agent.requestHistory?.length || 0} 条</span>
       </div>
-      <div class="request-highlight">
-        <div class="panel-subhead">
-          <strong>${lastRequest ? requestKindLabel(lastRequest.kind) : '暂无请求'}</strong>
-          <span class="muted">${formatDateTime(lastRequest?.ts)} · ${relativeTime(lastRequest?.ts)}</span>
-        </div>
-        <p>${escapeHtml(lastRequest?.text || '最近没有可展示的请求内容。')}</p>
-      </div>
-      <div class="history-list">
-        ${(agent.requestHistory ?? [])
-          .map(
-            (item) => `
-              <article class="history-item">
-                <div class="history-meta">
-                  <span class="pill ${escapeHtml(item.kind)}">${requestKindLabel(item.kind)}</span>
-                  <span class="muted">${formatDateTime(item.ts)} · ${relativeTime(item.ts)}</span>
-                </div>
-                <p>${escapeHtml(item.text)}</p>
-                <small class="muted">会话 ${escapeHtml(item.sessionId || '未知')}</small>
-              </article>
-            `,
-          )
-          .join('')}
+      <div class="history-shell">
+        <article class="story-card history-focus-card">
+          <div class="section-head compact">
+            <div>
+              <strong>${lastRequest ? requestKindLabel(lastRequest.kind) : '暂无请求'}</strong>
+              <p class="muted">${lastRequest?.sessionId ? `会话 ${escapeHtml(lastRequest.sessionId)}` : '当前没有可回看的请求。'}</p>
+            </div>
+            <span>${formatDateTime(lastRequest?.ts)}</span>
+          </div>
+          <div class="history-meta-grid">
+            <article>
+              <span>发送时间</span>
+              <strong>${relativeTime(lastRequest?.ts)}</strong>
+            </article>
+            <article>
+              <span>请求类型</span>
+              <strong>${lastRequest ? requestKindLabel(lastRequest.kind) : '无'}</strong>
+            </article>
+            <article>
+              <span>最近活动</span>
+              <strong>${relativeTime(agent.lastActivityAt)}</strong>
+            </article>
+          </div>
+          <div class="surface-scroll message-scroll">
+            <pre class="request-copy">${escapeHtml(lastRequest?.text || '最近没有可展示的请求内容。')}</pre>
+          </div>
+        </article>
+        <article class="editor-card history-feed-card">
+          <div class="section-head compact">
+            <strong>最近消息</strong>
+            <span>${agent.requestHistory?.length || 0} 条</span>
+          </div>
+          <div class="surface-scroll timeline-scroll">
+            ${
+              agent.requestHistory?.length
+                ? agent.requestHistory
+                    .map(
+                      (item) => `
+                        <article class="timeline-item">
+                          <div class="section-head compact">
+                            <span class="meta-chip subtle">${requestKindLabel(item.kind)}</span>
+                            <span>${formatDateTime(item.ts)} · ${relativeTime(item.ts)}</span>
+                          </div>
+                          <div class="surface-scroll timeline-copy">
+                            <p>${escapeHtml(item.text)}</p>
+                          </div>
+                          <small>会话 ${escapeHtml(item.sessionId || '未知')}</small>
+                        </article>
+                      `,
+                    )
+                    .join('')
+                : '<p class="empty-state">最近没有消息记录。</p>'
+            }
+          </div>
+        </article>
       </div>
     </section>
   `;
@@ -662,113 +857,121 @@ function renderTasksPanel(agent) {
   const selectedCron = getSelectedCron(agent.id);
   const cronJobs = getCronJobs(agent.id);
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="tasks-panel">
+      <div class="section-head">
         <div>
           <p class="eyebrow">长期任务</p>
-          <h2>心跳、Cron 和最近运行情况</h2>
+          <h3>心跳与 Cron</h3>
         </div>
         <div class="inline-meta">
-          <span class="pill">最近心跳 ${relativeTime(agent.lastHeartbeatAt)}</span>
-          <span class="pill">Cron ${formatNumber(agent.cronSummary?.enabled)} 开启</span>
+          <span class="meta-chip">最近心跳 ${relativeTime(agent.lastHeartbeatAt)}</span>
+          <span class="meta-chip">运行中 Cron ${formatNumber(agent.cronSummary?.enabled)}</span>
         </div>
       </div>
       <div class="task-overview">
-        <div class="task-summary-card">
+        <article class="overview-card">
           <span>心跳目标</span>
           <strong>${escapeHtml(agent.heartbeat.target || 'last')}</strong>
           <small>${escapeHtml(agent.heartbeat.model || '沿用当前模型')}</small>
-        </div>
-        <div class="task-summary-card">
+        </article>
+        <article class="overview-card">
           <span>最近 Cron</span>
           <strong>${relativeTime(agent.cronSummary?.lastRunAt)}</strong>
           <small>异常 ${formatNumber(agent.cronSummary?.failing)}</small>
-        </div>
+        </article>
       </div>
-      <form id="heartbeat-form" class="heartbeat-card">
-        <div class="heartbeat-top">
-          <strong>心跳任务</strong>
-          <button class="ghost-button" type="button" data-action="toggle-heartbeat" data-enabled="${agent.heartbeat.enabled ? 'false' : 'true'}">${agent.heartbeat.enabled ? '关闭' : '开启'}</button>
-        </div>
-        <div class="compact-grid">
-          <label>间隔
-            <input name="every" value="${escapeHtml(agent.heartbeat.every || '')}" />
-          </label>
-          <label>投递目标
-            <input name="target" value="${escapeHtml(agent.heartbeat.target || '')}" />
-          </label>
-          <label>模型覆盖
-            <input name="model" value="${escapeHtml(agent.heartbeat.model || '')}" />
-          </label>
-          <label>指定去向
-            <input name="to" value="${escapeHtml(agent.heartbeat.to || '')}" />
-          </label>
-        </div>
-        <label>心跳提示词
-          <textarea name="prompt">${escapeHtml(agent.heartbeat.prompt || '')}</textarea>
-        </label>
-        <div class="row-actions">
-          <span class="muted">${agent.heartbeat.enabled ? '当前为启用状态' : '当前为停用状态'}</span>
-          <button type="submit">保存心跳</button>
-        </div>
-      </form>
-      <div class="task-split">
-        <div class="cron-list">
-          <div class="panel-subhead">
-            <strong>Cron 列表</strong>
-            <span class="muted">${cronJobs.length} 个</span>
+      <div class="task-grid">
+        <form id="heartbeat-form" class="editor-card">
+          <div class="section-head compact">
+            <strong>心跳任务</strong>
+            <button class="ghost-button" type="button" data-action="toggle-heartbeat" data-enabled="${agent.heartbeat.enabled ? 'false' : 'true'}">${agent.heartbeat.enabled ? '关闭' : '开启'}</button>
           </div>
-          ${
-            cronJobs.length
-              ? cronJobs
-                  .map((job) => {
-                    const lastRun = job.recentRuns?.[0] ?? null;
-                    return `
-                      <article class="cron-item ${job.id === state.selectedCronId ? 'selected' : ''}">
-                        <button class="cron-select" type="button" data-action="select-cron" data-cron-id="${escapeHtml(job.id)}">
-                          <strong>${escapeHtml(job.name || job.id)}</strong>
-                          <p class="muted">${scheduleKindLabel(job.schedule?.kind)} · ${job.enabled ? '启用' : '停用'}</p>
-                          <p>${escapeHtml(job.state?.lastError || lastRun?.summary || job.payload?.message || job.payload?.systemEvent || '')}</p>
-                        </button>
-                        <button class="ghost-button" type="button" data-action="toggle-cron" data-cron-id="${escapeHtml(job.id)}" data-enabled="${job.enabled ? 'false' : 'true'}">${job.enabled ? '停用' : '启用'}</button>
-                      </article>
-                    `;
-                  })
-                  .join('')
-              : '<p class="empty-state">这个小龙虾当前没有 Cron。</p>'
-          }
+          <div class="compact-grid">
+            <label>间隔
+              <input name="every" value="${escapeHtml(agent.heartbeat.every || '')}" />
+            </label>
+            <label>投递目标
+              <input name="target" value="${escapeHtml(agent.heartbeat.target || '')}" />
+            </label>
+            <label>模型覆盖
+              <input name="model" value="${escapeHtml(agent.heartbeat.model || '')}" />
+            </label>
+            <label>指定去向
+              <input name="to" value="${escapeHtml(agent.heartbeat.to || '')}" />
+            </label>
+          </div>
+          <label>心跳提示词
+            <textarea class="compact-textarea" name="prompt">${escapeHtml(agent.heartbeat.prompt || '')}</textarea>
+          </label>
+          <div class="row-actions">
+            <span class="muted">${agent.heartbeat.enabled ? '当前为启用状态' : '当前为停用状态'}</span>
+            <button type="submit">保存心跳</button>
+          </div>
+        </form>
+        <div class="editor-card">
+          <div class="section-head compact">
+            <strong>Cron 列表</strong>
+            <span>${cronJobs.length} 个</span>
+          </div>
+          <div class="surface-scroll cron-scroll">
+            ${
+              cronJobs.length
+                ? cronJobs
+                    .map((job) => {
+                      const lastRun = job.recentRuns?.[0] ?? null;
+                      return `
+                        <article class="cron-row ${job.id === state.selectedCronId ? 'selected' : ''}">
+                          <button class="cron-select" type="button" data-action="select-cron" data-cron-id="${escapeHtml(job.id)}">
+                            <strong>${escapeHtml(job.name || job.id)}</strong>
+                            <p>${escapeHtml(job.state?.lastError || lastRun?.summary || job.payload?.message || job.payload?.systemEvent || '暂无摘要')}</p>
+                            <small>${scheduleKindLabel(job.schedule?.kind)} · ${job.enabled ? '启用' : '停用'}</small>
+                          </button>
+                          <div class="button-row">
+                            <button class="ghost-button" type="button" data-action="toggle-cron" data-cron-id="${escapeHtml(job.id)}" data-enabled="${job.enabled ? 'false' : 'true'}">${job.enabled ? '停用' : '启用'}</button>
+                            <button class="ghost-button danger" type="button" data-action="delete-cron" data-cron-id="${escapeHtml(job.id)}">删除</button>
+                          </div>
+                        </article>
+                      `;
+                    })
+                    .join('')
+                : '<p class="empty-state">当前没有 Cron。</p>'
+            }
+          </div>
         </div>
-        <div class="cron-editor">
-          <div class="panel-subhead">
+        <div class="editor-card">
+          <div class="section-head compact">
             <strong>${selectedCron ? escapeHtml(selectedCron.name || selectedCron.id) : '无任务可编辑'}</strong>
-            ${selectedCron ? '<span class="muted">直接改原始 JSON</span>' : ''}
+            ${selectedCron ? '<span>原始 JSON</span>' : ''}
           </div>
           ${
             selectedCron
               ? `
-                <textarea id="cron-draft">${escapeHtml(state.cronDraft)}</textarea>
+                <textarea class="cron-textarea" id="cron-draft">${escapeHtml(state.cronDraft)}</textarea>
                 <div class="row-actions">
-                  <span class="muted">保存后直接写回 ~/.openclaw/cron/jobs.json</span>
-                  <button id="save-cron" type="button" data-action="save-cron">保存任务</button>
+                  <span class="muted">保存会直接写回 jobs.json</span>
+                  <div class="button-row">
+                    <button class="ghost-button danger" type="button" data-action="delete-cron" data-cron-id="${escapeHtml(selectedCron.id)}">删除任务</button>
+                    <button id="save-cron" type="button" data-action="save-cron">保存任务</button>
+                  </div>
                 </div>
-                <div class="run-list">
+                <div class="surface-scroll run-scroll">
                   ${(selectedCron.recentRuns ?? [])
                     .map(
                       (run) => `
-                        <article class="run-item ${escapeHtml(String(run.status || 'unknown'))}">
-                          <div class="panel-subhead">
+                        <article class="run-card ${escapeHtml(String(run.status || 'unknown'))}">
+                          <div class="section-head compact">
                             <strong>${escapeHtml(String(run.status || 'unknown'))}</strong>
-                            <span class="muted">${formatDateTime(run.ts)} · ${relativeTime(run.ts)}</span>
+                            <span>${formatDateTime(run.ts)} · ${relativeTime(run.ts)}</span>
                           </div>
                           <p>${escapeHtml(run.summary || '无摘要')}</p>
-                          <small class="muted">Token ${formatNumber(run.usage?.total)} · 成本 ${formatMoney(run.usage?.cost)}</small>
+                          <small>Token ${formatNumber(run.usage?.total)} · 成本 ${formatMoney(run.usage?.cost)}</small>
                         </article>
                       `,
                     )
                     .join('')}
                 </div>
               `
-              : '<p class="empty-state">没有可编辑的 Cron。</p>'
+              : '<p class="empty-state">选择一个 Cron 开始编辑。</p>'
           }
         </div>
       </div>
@@ -776,54 +979,110 @@ function renderTasksPanel(agent) {
   `;
 }
 
+function splitMarkdownFiles(files) {
+  return {
+    important: files.filter((file) => file.importance === '核心' || file.importance === '重点'),
+    secondary: files.filter((file) => file.importance === '常用'),
+    trailing: files.filter((file) => file.importance === '其他'),
+  };
+}
+
+function renderMarkdownGroup(title, files) {
+  if (!files.length) return '';
+  return `
+    <div class="doc-group">
+      <div class="section-head compact">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${files.length}</span>
+      </div>
+      <div class="doc-group-list">
+        ${files
+          .map(
+            (file) => `
+              <button class="doc-item ${file.relativePath === state.selectedFilePath ? 'selected' : ''}" type="button" data-action="select-file" data-file-path="${escapeHtml(file.relativePath)}">
+                <div class="doc-item-top">
+                  <strong>${escapeHtml(file.relativePath)}</strong>
+                  <span class="priority-chip ${importanceClass(file.importance)}">${escapeHtml(file.importance)}</span>
+                </div>
+                <small>${formatDateTime(file.mtimeMs)} · ${formatNumber(file.size)} B · 分值 ${formatNumber(file.score)}</small>
+              </button>
+            `,
+          )
+          .join('')}
+      </div>
+    </div>
+  `;
+}
+
 function renderMarkdownPanel(agent) {
   const files = agent.markdownFiles ?? [];
+  const grouped = splitMarkdownFiles(files);
+  const selectedFile = getSelectedMarkdownFile(agent);
   return `
-    <section class="panel markdown-panel">
-      <div class="panel-head">
+    <section class="surface doc-surface" id="markdown-panel">
+      <div class="section-head">
         <div>
-          <p class="eyebrow">档案</p>
-          <h2>Markdown 记忆与设定</h2>
+          <p class="eyebrow">Markdown 档案</p>
+          <h3>重要文档优先，其他文档按权重顺排</h3>
         </div>
-        <span class="muted">${files.length} 个 .md 文件</span>
+        <span>${files.length} 个</span>
       </div>
-      <div class="task-split">
-        <div class="md-list">
-          ${
-            files.length
-              ? files
-                  .map(
-                    (file) => `
-                      <button class="file-link ${file.relativePath === state.selectedFilePath ? 'selected' : ''}" type="button" data-action="select-file" data-file-path="${escapeHtml(file.relativePath)}">
-                        <strong>${escapeHtml(file.relativePath)}</strong>
-                        <span class="muted">${formatDateTime(file.mtimeMs)} · ${formatNumber(file.size)} B</span>
-                      </button>
-                    `,
-                  )
-                  .join('')
-              : '<p class="empty-state">当前 workspace 没有发现 Markdown。</p>'
-          }
+      <div class="doc-shell">
+        <div class="editor-card">
+          <div class="surface-scroll doc-list-scroll">
+            ${renderMarkdownGroup('核心与重点', grouped.important)}
+            ${renderMarkdownGroup('常用', grouped.secondary)}
+            ${renderMarkdownGroup('其他', grouped.trailing)}
+            ${!files.length ? '<p class="empty-state">当前 workspace 没有 Markdown。</p>' : ''}
+          </div>
         </div>
-        <div class="md-editor">
+        <div class="editor-card">
           ${
             state.selectedFilePath
               ? `
-                <div class="panel-subhead">
-                  <strong>${escapeHtml(state.selectedFilePath)}</strong>
-                  <span class="muted">${state.fileDirty ? '有未保存修改' : '已同步'}</span>
+                <div class="section-head compact">
+                  <div>
+                    <strong>${escapeHtml(state.selectedFilePath)}</strong>
+                    <p class="muted">${selectedFile ? `最近修改 ${formatDateTime(selectedFile.mtimeMs)} · 分值 ${formatNumber(selectedFile.score)}` : '当前文件信息缺失'}</p>
+                  </div>
+                  <div class="inline-meta">
+                    ${
+                      selectedFile
+                        ? `<span class="priority-chip ${importanceClass(selectedFile.importance)}">${escapeHtml(selectedFile.importance)}</span>`
+                        : ''
+                    }
+                    <span>${state.fileDirty ? '未保存' : '已同步'}</span>
+                  </div>
                 </div>
                 <div class="replace-row">
                   <input id="search-needle" placeholder="查找文本" value="${escapeHtml(state.searchNeedle)}" />
                   <input id="replace-needle" placeholder="替换为" value="${escapeHtml(state.replaceNeedle)}" />
                   <button class="ghost-button" type="button" data-action="replace-all">全部替换</button>
                 </div>
-                <textarea id="markdown-content">${escapeHtml(state.fileContent)}</textarea>
+                <div class="markdown-split">
+                  <div class="markdown-column">
+                    <div class="section-head compact">
+                      <strong>本地预览</strong>
+                      <span>${selectedFile ? `${formatNumber(selectedFile.size)} B` : 'Markdown'}</span>
+                    </div>
+                    <div class="surface-scroll markdown-preview-scroll">
+                      <article class="markdown-preview">${renderMarkdownPreview(state.fileContent)}</article>
+                    </div>
+                  </div>
+                  <div class="markdown-column">
+                    <div class="section-head compact">
+                      <strong>原文编辑</strong>
+                      <span>${state.fileDirty ? '存在未保存修改' : '磁盘已同步'}</span>
+                    </div>
+                    <textarea class="markdown-textarea" id="markdown-content">${escapeHtml(state.fileContent)}</textarea>
+                  </div>
+                </div>
                 <div class="row-actions">
-                  <span class="muted">查找和替换只在本地文本里完成，不会走模型。</span>
+                  <span class="muted">只在本地文本里查找和替换，不会调用模型。</span>
                   <button id="save-markdown" type="button" data-action="save-markdown">保存文件</button>
                 </div>
               `
-              : '<p class="empty-state">选择一个 Markdown 文件开始编辑。</p>'
+              : '<p class="empty-state">从左边挑一个 Markdown 文件开始查看或编辑。</p>'
           }
         </div>
       </div>
@@ -834,51 +1093,57 @@ function renderMarkdownPanel(agent) {
 function renderSkillsPanel(agent) {
   const sharedSkills = state.overview?.sharedSkills ?? [];
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="skills-panel">
+      <div class="section-head">
         <div>
           <p class="eyebrow">技能</p>
-          <h2>共享技能、独享技能和当前生效技能</h2>
+          <h3>共享、独享和生效中的技能</h3>
         </div>
-        <span class="muted">共享 ${sharedSkills.length} · 独享 ${agent.skills.private.length}</span>
+        <span>共享 ${sharedSkills.length} · 独享 ${agent.skills.private.length}</span>
       </div>
-      <div class="skills-grid">
-        <div class="skill-column">
-          <h3>全局共享</h3>
-          ${sharedSkills.length ? sharedSkills.map((skill) => `<div class="skill-chip">${escapeHtml(skill.name)}</div>`).join('') : '<p class="empty-state">没有共享技能。</p>'}
+      <div class="skill-columns">
+        <div class="editor-card skill-panel">
+          <strong>全局共享</strong>
+          <div class="surface-scroll skill-scroll">
+            ${sharedSkills.length ? sharedSkills.map((skill) => `<div class="skill-tag">${escapeHtml(skill.name)}</div>`).join('') : '<p class="empty-state">没有共享技能。</p>'}
+          </div>
         </div>
-        <div class="skill-column">
-          <h3>当前小龙虾独享</h3>
-          ${
-            agent.skills.private.length
-              ? agent.skills.private.map((skill) => `<div class="skill-chip private">${escapeHtml(skill.name)}</div>`).join('')
-              : '<p class="empty-state">没有私有技能。</p>'
-          }
+        <div class="editor-card skill-panel">
+          <strong>当前独享</strong>
+          <div class="surface-scroll skill-scroll">
+            ${
+              agent.skills.private.length
+                ? agent.skills.private.map((skill) => `<div class="skill-tag private">${escapeHtml(skill.name)}</div>`).join('')
+                : '<p class="empty-state">没有私有技能。</p>'
+            }
+          </div>
         </div>
-        <div class="skill-column">
-          <h3>当前生效</h3>
-          ${
-            agent.skills.effective.length
-              ? agent.skills.effective
-                  .map((skill) => {
-                    const label =
-                      skill.category === 'private'
-                        ? '独享'
-                        : skill.category === 'shared-managed'
-                          ? '共享'
-                          : skill.category === 'bundled'
-                            ? '内置'
-                            : '外部';
-                    return `
-                      <div class="skill-row">
-                        <strong>${escapeHtml(skill.name)}</strong>
-                        <span class="pill">${label}</span>
-                      </div>
-                    `;
-                  })
-                  .join('')
-              : '<p class="empty-state">暂无技能快照。</p>'
-          }
+        <div class="editor-card skill-panel">
+          <strong>当前生效</strong>
+          <div class="surface-scroll skill-scroll">
+            ${
+              agent.skills.effective.length
+                ? agent.skills.effective
+                    .map((skill) => {
+                      const label =
+                        skill.category === 'private'
+                          ? '独享'
+                          : skill.category === 'shared-managed'
+                            ? '共享'
+                            : skill.category === 'bundled'
+                              ? '内置'
+                              : '外部';
+                      return `
+                        <div class="skill-row">
+                          <strong>${escapeHtml(skill.name)}</strong>
+                          <span class="meta-chip subtle">${label}</span>
+                        </div>
+                      `;
+                    })
+                    .join('')
+                : '<p class="empty-state">暂无技能快照。</p>'
+            }
+          </div>
         </div>
       </div>
     </section>
@@ -889,28 +1154,28 @@ function renderServicesPanel() {
   const gateway = state.overview?.gateway;
   const services = state.overview?.services ?? [];
   return `
-    <section class="panel">
-      <div class="panel-head">
+    <section class="surface" id="services-panel">
+      <div class="section-head">
         <div>
-          <p class="eyebrow">系统</p>
-          <h2>网关与常驻服务</h2>
+          <p class="eyebrow">系统层</p>
+          <h3>网关与常驻服务</h3>
         </div>
         <div class="inline-meta">
           <span class="status-chip ${gateway?.online ? 'ok' : 'offline'}">${gateway?.online ? '网关在线' : '网关离线'}</span>
-          <span class="muted">心跳调度器 ${relativeTime(gateway?.lastHeartbeatRunnerAt)}</span>
+          <span>${relativeTime(gateway?.lastHeartbeatRunnerAt)}</span>
         </div>
       </div>
-      <div class="service-grid">
+      <div class="service-board">
         ${services
           .map(
             (service) => `
-              <article class="service-card">
-                <div>
+              <article class="service-tile">
+                <div class="section-head compact">
                   <strong>${escapeHtml(service.label)}</strong>
-                  <p class="muted">${escapeHtml(service.programArguments?.join(' ') || service.program || '无命令信息')}</p>
-                </div>
-                <div class="service-meta">
                   <span class="status-chip ${service.loaded ? 'ok' : 'idle'}">${service.loaded ? '已加载' : '未加载'}</span>
+                </div>
+                <p>${escapeHtml(service.programArguments?.join(' ') || service.program || '无命令信息')}</p>
+                <div class="row-actions">
                   <span class="muted">${service.pid ? `PID ${service.pid}` : '无活动 PID'}</span>
                   <button class="ghost-button" type="button" data-action="toggle-service" data-service-label="${escapeHtml(service.label)}" data-enabled="${service.loaded ? 'false' : 'true'}">${service.loaded ? '停用' : '拉起'}</button>
                 </div>
@@ -933,27 +1198,26 @@ function render() {
   root.innerHTML = `
     <div class="monitor-shell">
       ${renderRail()}
-      <main class="monitor-main">
+      <main class="workspace-shell">
         ${renderNotice()}
         ${renderFleetPanel()}
-        <div class="main-grid two-up">
+        <div class="workspace-grid top">
           ${renderAlertPanel(agent)}
           ${renderPresetPanel()}
         </div>
         ${renderAgentCommandPanel(agent)}
-        <div class="main-grid two-up">
+        <div class="workspace-grid middle">
           ${renderTrafficPanel(agent)}
           ${renderHistoryPanel(agent)}
         </div>
         ${renderTasksPanel(agent)}
-        <div class="main-grid markdown-skills">
-          ${renderMarkdownPanel(agent)}
-          ${renderSkillsPanel(agent)}
-        </div>
+        ${renderMarkdownPanel(agent)}
+        ${renderSkillsPanel(agent)}
         ${renderServicesPanel()}
       </main>
     </div>
   `;
+  syncHashScroll();
 }
 
 async function handleAction(action, element) {
@@ -1072,6 +1336,21 @@ async function handleAction(action, element) {
         body: JSON.stringify({ enabled: element.dataset.enabled === 'true' }),
       });
       setNotice('ok', 'Cron 开关已切换');
+      await refreshOverview();
+      return;
+    }
+
+    if (action === 'delete-cron') {
+      const cronId = element.dataset.cronId;
+      const cron = getCronJobs(agent.id).find((item) => item.id === cronId);
+      if (!window.confirm(`确认删除 Cron ${cron?.name || cronId}？`)) return;
+      await api(`/api/cron/${encodeURIComponent(cronId)}`, { method: 'DELETE' });
+      if (state.selectedCronId === cronId) {
+        state.selectedCronId = '';
+        state.cronDraft = '';
+        state.cronDirty = false;
+      }
+      setNotice('ok', 'Cron 已删除');
       await refreshOverview();
       return;
     }
@@ -1240,6 +1519,10 @@ function setupEventDelegation() {
 
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
+  window.addEventListener('hashchange', () => {
+    state.lastHashScrolled = '';
+    syncHashScroll(true);
+  });
 }
 
 setupEventDelegation();

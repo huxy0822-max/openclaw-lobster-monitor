@@ -4,122 +4,171 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenClaw 小龙虾总控台</title>
-    <meta name="description" content="本地可视化监视器，用来管理 OpenClaw 每只小龙虾的 API Key、长期任务、Markdown 和记忆与技能。" />
+    <meta
+      name="description"
+      content="给 OpenClaw 用的本地可视化监视器：首页讲清楚这是什么，监视器页直接改 Key、看 Token、管心跳、Cron、Markdown 和技能。"
+    />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body class="landing-body">
-    <div class="landing-shell">
-      <header class="landing-topbar">
-        <a class="brand-lockup" href="/">
+    <div class="landing-page">
+      <header class="landing-nav">
+        <a class="landing-brand" href="/">
           <span class="brand-mark">OC</span>
-          <span class="brand-copy">
+          <span class="brand-meta">
             <strong>小龙虾总控台</strong>
             <small>OpenClaw 本地监视器</small>
           </span>
         </a>
-        <nav class="topbar-actions">
+        <div class="landing-actions">
           <a class="ghost-button" href="/monitor">进入监视器</a>
           <a class="ghost-button" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
+        </div>
       </header>
+
       <main class="landing-main">
-        <section class="landing-hero">
-          <div class="landing-copy">
-            <p class="eyebrow">发布页</p>
-            <h1>一个真正给 OpenClaw 主控用的本地可视化面板</h1>
-            <p class="landing-lead">
-              核心目标很直接：在网页里切每只小龙虾的 API Key，看它们的 token、心跳、Cron、Markdown 和记忆、技能与常驻服务状态，而且整个查询与替换过程不走 AI。
-            </p>
-            <div class="landing-actions">
-              <a class="cta-button" href="/monitor">打开总控台</a>
-              <a class="ghost-button" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">查看项目说明</a>
+        <section class="landing-hero-shell">
+          <div class="landing-hero-copy">
+            <div class="hero-kicker-row">
+              <span class="meta-chip accent">本地控制台</span>
+              <span class="meta-chip subtle">不额外烧 token</span>
             </div>
-            <div class="hero-metrics" id="landing-summary">
-              <article class="hero-metric">
+            <p class="eyebrow">OpenClaw 指挥台</p>
+            <h1>把 OpenClaw 当成一套系统来主控</h1>
+            <p class="landing-lead">
+              不是展示墙，也不是单纯看日志。这个页面的目标是让你在本地直接接管每只小龙虾的 Key、Token、Cron、心跳、Markdown 和记忆，出问题时第一时间能下手。
+            </p>
+            <div class="landing-summary-strip" id="landing-summary">
+              <article class="landing-summary-card">
                 <span>加载中</span>
                 <strong>--</strong>
-                <small>正在读取本地 OpenClaw 状态</small>
+                <small>正在拉取本地总览</small>
               </article>
             </div>
-          </div>
-          <div class="landing-visual">
-            <div class="visual-card">
-              <p class="eyebrow">核心能力</p>
-              <h2>切 Key、看任务、查异常</h2>
-              <ul class="feature-list">
-                <li>每个 agent 独立修改和一键切换 API Key</li>
-                <li>直接看总 Token、今天、最近几小时和 7 天走势</li>
-                <li>统一管理心跳、Cron、Markdown 和记忆文件</li>
-                <li>列出共享技能、独享技能和 launchd 常驻服务</li>
-              </ul>
-            </div>
-            <div class="visual-stack">
-              <article class="mini-panel">
-                <span>本地原则</span>
-                <strong>0 额外 AI 查询</strong>
-                <small>所有查找、替换和统计都直接走本地文件。</small>
-              </article>
-              <article class="mini-panel">
-                <span>使用入口</span>
-                <strong>/monitor</strong>
-                <small>监视器页和项目发布页分开，定位更清晰。</small>
-              </article>
+            <div class="landing-hero-actions">
+              <a class="cta-button" href="/monitor">直接进入总控台</a>
+              <a class="ghost-button" href="#live">看当前实时状态</a>
             </div>
           </div>
-        </section>
-
-        <section class="landing-showcase">
-          <div class="section-title">
-            <p class="eyebrow">界面预览</p>
-            <h2>总览、切 Key 和任务管理都可以直接看</h2>
-          </div>
-          <div class="showcase-grid">
-            <figure class="showcase-card">
-              <img src="/assets/screenshots/landing-home.png" alt="项目发布页截图" />
-              <figcaption>正式入口页，先讲清楚这是什么，再进入总控台。</figcaption>
-            </figure>
-            <figure class="showcase-card">
-              <img src="/assets/screenshots/monitor-overview.png" alt="监视器总览与 Key 控制截图" />
-              <figcaption>舰队总览、告警中心、Key 预设池和当前通道切换。</figcaption>
-            </figure>
-          </div>
-        </section>
-
-        <section class="landing-features">
-          <div class="section-title">
-            <p class="eyebrow">功能分区</p>
-            <h2>重点不是演示，而是让你真的拿它盯 OpenClaw</h2>
-          </div>
-          <div class="feature-grid">
-            <article class="feature-card">
-              <h3>Key 总控</h3>
-              <p>支持预设池、抓取当前通道、一键套给当前 agent 或同名通道全量分发。</p>
+          <div class="landing-hero-stage">
+            <article class="landing-preview-card">
+              <div class="preview-head">
+                <div>
+                  <p class="eyebrow">实时预览</p>
+                  <h2>监视器页把高频动作压进局部滚动区</h2>
+                </div>
+                <span class="meta-chip">请求 / Cron / Markdown</span>
+              </div>
+              <div class="preview-stage">
+                <img src="/assets/screenshots/monitor-overview.png" alt="小龙虾总控台监视器截图" />
+              </div>
             </article>
-            <article class="feature-card">
-              <h3>运行态监控</h3>
-              <p>同时显示总 token、今天、最近 1 小时、3 小时、6 小时、24 小时和 7 天走势。</p>
-            </article>
-            <article class="feature-card">
-              <h3>长期任务</h3>
-              <p>直接改 heartbeat、开关 Cron、看最近运行摘要和 lastError，不需要翻文件。</p>
-            </article>
-            <article class="feature-card">
-              <h3>记忆与技能</h3>
-              <p>网页里直接查找替换 Markdown，查看共享技能、独享技能和当前生效技能。</p>
+            <article class="landing-side-card">
+              <div class="section-head compact">
+                <strong>这页负责什么</strong>
+                <span>首页 / 发布页</span>
+              </div>
+              <div class="landing-side-list">
+                <div>
+                  <span>讲清楚它是什么</span>
+                  <p>首页只讲价值、当前状态和入口，不把编辑器和大段表单堆在这里。</p>
+                </div>
+                <div>
+                  <span>给出实时摘要</span>
+                  <p>本机小龙虾数量、今日 Token、全局告警、共享技能都会实时回填。</p>
+                </div>
+                <div>
+                  <span>把你送进真正的控制台</span>
+                  <p>所有切换 Key、删 Cron、改 Markdown、启停服务的动作都留给 `/monitor`。</p>
+                </div>
+              </div>
             </article>
           </div>
         </section>
 
-        <section class="landing-live">
-          <div class="section-title">
-            <p class="eyebrow">实时态势</p>
-            <h2>当前这台机器上的 OpenClaw 状态</h2>
+        <section class="landing-band">
+          <article class="landing-band-card">
+            <p class="eyebrow">一号诉求</p>
+            <h3>随时切换 Key，不必翻文件</h3>
+            <p>预设池、通道抓取、一键套用都保留在本地。真正高频的操作必须离点击足够近。</p>
+          </article>
+          <article class="landing-band-card">
+            <p class="eyebrow">二号诉求</p>
+            <h3>长内容只在局部滚动，不拖坏整页</h3>
+            <p>最后一次请求、最近消息、Cron 运行记录、Markdown 编辑器和预览都固定在局部容器里。</p>
+          </article>
+          <article class="landing-band-card">
+            <p class="eyebrow">三号诉求</p>
+            <h3>所有查找替换都在本地完成</h3>
+            <p>检索、排序、替换和 Markdown 预览都直接走本地文件，不让 AI 介入这些机械动作。</p>
+          </article>
+        </section>
+
+        <section class="landing-ops-board">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">总控逻辑</p>
+              <h2>先看清楚，再下手改</h2>
+            </div>
+            <a class="ghost-button" href="/monitor">打开总控台</a>
           </div>
-          <div class="live-grid" id="landing-live-grid">
-            <article class="live-card">
+          <div class="landing-ops-grid">
+            <article class="ops-card">
+              <strong>1. 先看状态</strong>
+              <p>首页只提供高层摘要，告诉你这台机器现在有没有掉线、有没有爆量、有没有明显告警。</p>
+            </article>
+            <article class="ops-card">
+              <strong>2. 进入 monitor</strong>
+              <p>真正的控制区按舰队、单只小龙虾、任务、文档和系统层分块，不让一个模块霸占整页高度。</p>
+            </article>
+            <article class="ops-card">
+              <strong>3. 直接修改本地数据</strong>
+              <p>改 provider、删 cron、改 heartbeat、编辑 Markdown 都是直接落盘，没有额外中转。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="landing-live-board" id="live">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">实时状态</p>
+              <h2>这台机器上的 OpenClaw 现在是什么样</h2>
+            </div>
+            <a class="ghost-button" href="/monitor">打开实时控制台</a>
+          </div>
+          <div class="landing-live-grid" id="landing-live-grid">
+            <article class="landing-live-card">
               <strong>加载中</strong>
-              <p>正在从本地接口读取状态。</p>
+              <p>正在从本地接口读取数据。</p>
             </article>
+          </div>
+        </section>
+
+        <section class="landing-split">
+          <article class="lane-card emphasis">
+            <div>
+              <p class="eyebrow">首页定位</p>
+              <h3>讲清楚这是什么、当前是否健康、下一步去哪</h3>
+            </div>
+            <p>首页像一块简洁的作战前置板，只保留价值、实时状态、总控截图和进入按钮，避免变成另一套冗长的操作页。</p>
+          </article>
+          <article class="lane-card">
+            <div>
+              <p class="eyebrow">Monitor 定位</p>
+              <h3>把真正高频的动作压回视口里</h3>
+            </div>
+            <p>请求历史、Cron、Markdown 和技能都拆成单独区域，并且内容过长时局部滚动，保证重点区域始终可见。</p>
+          </article>
+        </section>
+
+        <section class="landing-cta">
+          <div>
+            <p class="eyebrow">下一步</p>
+            <h2>进监视器，直接接管这套 OpenClaw</h2>
+          </div>
+          <div class="landing-actions">
+            <a class="cta-button" href="/monitor">打开 /monitor</a>
+            <a class="ghost-button" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">查看 README</a>
           </div>
         </section>
       </main>

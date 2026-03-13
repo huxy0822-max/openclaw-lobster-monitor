@@ -15,6 +15,10 @@
 
 ![监视器总览](public/assets/screenshots/monitor-overview.png)
 
+![Markdown 工作区](public/assets/screenshots/monitor-markdown.png)
+
+![Cron 与长期任务](public/assets/screenshots/monitor-tasks.png)
+
 ## 现在能做什么
 
 - 看整个 OpenClaw 舰队总览
@@ -27,6 +31,7 @@
   - 最后活动时间
   - 最后一次请求是什么
   - 最近请求时间线
+  - 长文本请求和最近消息都限制在局部滚动区里
 - 管理每个 agent 的模型 provider
   - 直接改 `apiKey`
   - 直接改 `baseUrl`
@@ -39,11 +44,13 @@
 - 管理长期任务
   - heartbeat 开关、间隔、提示词、目标
   - Cron 开关
+  - Cron 删除
   - 直接编辑 Cron 原始 JSON
   - 看最近运行摘要、token 和失败状态
 - 管理 Markdown 和记忆文件
-  - 列出每只小龙虾 workspace 下的所有 `.md`
-  - 直接网页编辑
+  - 按权重排序列出每只小龙虾 workspace 下的 `.md`
+  - 重要文档优先展示，日记和低优先级文件放后面
+  - 本地 Markdown 预览 + 原文编辑并排展示
   - 本地查找 / 替换，不调用模型
 - 看技能分布
   - 全局共享 skill
@@ -95,6 +102,10 @@ http://127.0.0.1:3199/monitor
 ### 3. 不改 OpenClaw 核心链路
 
 这个项目不接管 OpenClaw 的核心执行逻辑，只做旁路可视化和配置落地。
+
+### 4. 长内容不拖坏整页
+
+请求正文、最近消息、Cron 运行记录、Markdown 列表、预览和编辑器都改成局部滚动区，保证高频控制按钮始终留在视口里。
 
 ## 数据来源
 
@@ -155,7 +166,7 @@ npm run dev
 
 ## 已知取舍
 
-- Cron 编辑现在仍然是“原始 JSON 直接改”，还没有表单化编辑器
+- Cron 编辑现在仍然是“原始 JSON 直接改”，只是已经支持删除和开关，还没有完整表单化编辑器
 - 告警是本地规则推断，不是独立告警服务
 - launchd 开关会直接影响本机 OpenClaw 服务，操作立即生效
 - 这是本地单机工具，不做多用户权限隔离

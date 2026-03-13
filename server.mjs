@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { buildOverview } from './lib/monitor-data.mjs';
 import {
   applyProviderPreset,
+  deleteCronJob,
   deleteProviderPreset,
   readMarkdownFile,
   toggleLaunchdService,
@@ -142,6 +143,12 @@ const server = http.createServer(async (request, response) => {
       const [, jobId] = cronMatch.map(decodeURIComponent);
       const body = await readBody(request);
       sendJson(response, 200, await updateCronJob(jobId, body));
+      return;
+    }
+
+    if (cronMatch && request.method === 'DELETE') {
+      const [, jobId] = cronMatch.map(decodeURIComponent);
+      sendJson(response, 200, await deleteCronJob(jobId));
       return;
     }
 
