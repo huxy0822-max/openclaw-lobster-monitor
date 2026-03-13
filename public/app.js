@@ -27,6 +27,8 @@ const state = {
   providerPresetChoice: {},
   revealedSecrets: {},
   lastHashScrolled: '',
+  agentPanelExpanded: { main: true },
+  providerPanelExpanded: {},
 };
 
 const root = document.querySelector('#app');
@@ -276,6 +278,10 @@ function presetChoiceKey(agentId, providerId) {
   return `${agentId}:${providerId}`;
 }
 
+function providerPanelKey(agentId, providerId) {
+  return `${agentId}:${providerId}`;
+}
+
 function getChosenPresetId(agentId, providerId) {
   return state.providerPresetChoice[presetChoiceKey(agentId, providerId)] || state.selectedPresetId || getPresets()[0]?.id || '';
 }
@@ -286,6 +292,14 @@ function setChosenPresetId(agentId, providerId, presetId) {
 
 function isSecretVisible(secretId) {
   return Boolean(state.revealedSecrets[secretId]);
+}
+
+function isAgentPanelExpanded(agentId) {
+  return state.agentPanelExpanded[agentId] ?? agentId === 'main';
+}
+
+function isProviderPanelExpanded(agentId, providerId) {
+  return Boolean(state.providerPanelExpanded[providerPanelKey(agentId, providerId)]);
 }
 
 function loadPresetIntoForm(preset) {
@@ -316,6 +330,11 @@ async function loadFile(agentId, relativePath, shouldRender = true) {
 async function refreshOverview() {
   const overview = await api('/api/overview');
   state.overview = overview;
+  const requestedAgentId = new URLSearchParams(window.location.search).get('agent');
+
+  if (requestedAgentId && overview.agents?.some((agent) => agent.id === requestedAgentId)) {
+    state.selectedAgentId = requestedAgentId;
+  }
 
   if (!getAgent()) {
     state.selectedAgentId = overview.agents?.[0]?.id || '';
@@ -666,6 +685,7 @@ function renderPresetPanel() {
 
 function renderAgentCommandPanel(agent) {
   const selectedPreset = getSelectedPreset();
+  const panelExpanded = isAgentPanelExpanded(agent.id);
   return `
     <section class="surface" id="agent-panel">
       <div class="section-head">
@@ -676,81 +696,101 @@ function renderAgentCommandPanel(agent) {
         <div class="inline-meta">
           <span class="status-chip ${statusClass(agent.status)}">${statusLabel(agent.status)}</span>
           <span>${relativeTime(agent.lastActivityAt)}</span>
+          <button class="ghost-button" type="button" data-action="toggle-agent-panel" data-agent-id="${escapeHtml(agent.id)}">${panelExpanded ? '收起详情' : '展开详情'}</button>
         </div>
       </div>
-      <div class="agent-overview-grid">
-        <article class="overview-card">
+      <div class="agent-summary-strip">
+        <article class="summary-pill">
           <span>当前模型</span>
           <strong>${escapeHtml(agent.currentModel.provider || '未知')}</strong>
           <small>${escapeHtml(agent.currentModel.model || '未知')}</small>
         </article>
-        <article class="overview-card">
+        <article class="summary-pill">
           <span>心跳</span>
           <strong>${agent.heartbeat.enabled ? '开启' : '关闭'}</strong>
           <small>${escapeHtml(agent.heartbeat.every || '未设置')}</small>
         </article>
-        <article class="overview-card">
+        <article class="summary-pill">
           <span>Cron</span>
           <strong>${formatNumber(agent.cronSummary?.enabled)}</strong>
           <small>异常 ${formatNumber(agent.cronSummary?.failing)}</small>
         </article>
-        <article class="overview-card">
+        <article class="summary-pill">
           <span>当前预设</span>
           <strong>${escapeHtml(selectedPreset?.name || '未选择')}</strong>
           <small>${escapeHtml(selectedPreset?.providerId || '可直接在下方选择')}</small>
         </article>
       </div>
-      <div class="provider-wall">
-        ${(agent.providers ?? [])
-          .map((provider) => {
-            const chosenPresetId = getChosenPresetId(agent.id, provider.id);
-            return `
-              <form class="provider-editor" data-provider-form="${escapeHtml(provider.id)}">
-                <div class="section-head compact">
-                  <div>
-                    <strong>${escapeHtml(provider.id)}</strong>
-                    <p class="muted">${escapeHtml(provider.modelIds.join('、') || '无模型')}</p>
-                  </div>
-                  <span class="meta-chip subtle">${escapeHtml(provider.api || '未知协议')}</span>
-                </div>
-                <div class="provider-meta">
-                  <span class="meta-chip">当前密钥 ${escapeHtml(provider.apiKeyMasked || '空')}</span>
-                  <span class="meta-chip">预设 ${escapeHtml(getPresets().find((preset) => preset.id === chosenPresetId)?.name || '未选')}</span>
-                </div>
-                <label>API Key
-                  <div class="input-row">
-                    <input type="${isSecretVisible(presetChoiceKey(agent.id, provider.id)) ? 'text' : 'password'}" name="apiKey" value="${escapeHtml(provider.apiKey)}" autocomplete="off" spellcheck="false" />
-                    <button class="ghost-button" type="button" data-action="toggle-secret" data-secret-id="${escapeHtml(presetChoiceKey(agent.id, provider.id))}">${isSecretVisible(presetChoiceKey(agent.id, provider.id)) ? '隐藏' : '显示'}</button>
-                  </div>
-                </label>
-                <label>中转地址
-                  <input name="baseUrl" value="${escapeHtml(provider.baseUrl)}" autocomplete="off" spellcheck="false" />
-                </label>
-                <label>切换用预设
-                  <select data-provider-preset-select="${escapeHtml(provider.id)}">
-                    <option value="">不选择</option>
-                    ${getPresets()
-                      .map(
-                        (preset) => `
-                          <option value="${escapeHtml(preset.id)}" ${preset.id === chosenPresetId ? 'selected' : ''}>${escapeHtml(preset.name)}</option>
-                        `,
-                      )
-                      .join('')}
-                  </select>
-                </label>
-                <div class="row-actions wrap">
-                  <button class="ghost-button" type="button" data-action="capture-provider" data-provider-id="${escapeHtml(provider.id)}">抓成预设</button>
-                  <div class="button-row">
-                    <button class="ghost-button" type="button" data-action="apply-preset-current" data-provider-id="${escapeHtml(provider.id)}">套给当前</button>
-                    <button class="ghost-button" type="button" data-action="apply-preset-all" data-provider-id="${escapeHtml(provider.id)}">同名全量</button>
-                    <button type="submit">保存通道</button>
-                  </div>
-                </div>
-              </form>
-            `;
-          })
-          .join('')}
-      </div>
+      ${
+        panelExpanded
+          ? `
+            <div class="provider-wall">
+              ${(agent.providers ?? [])
+                .map((provider) => {
+                  const chosenPresetId = getChosenPresetId(agent.id, provider.id);
+                  const providerExpanded = isProviderPanelExpanded(agent.id, provider.id);
+                  return `
+                    <form class="provider-editor ${providerExpanded ? 'expanded' : 'collapsed'}" data-provider-form="${escapeHtml(provider.id)}">
+                      <button class="provider-toggle" type="button" data-action="toggle-provider-panel" data-agent-id="${escapeHtml(agent.id)}" data-provider-id="${escapeHtml(provider.id)}">
+                        <div>
+                          <strong>${escapeHtml(provider.id)}</strong>
+                          <p class="muted">${escapeHtml(provider.modelIds.join('、') || '无模型')}</p>
+                        </div>
+                        <div class="provider-toggle-meta">
+                          <span class="meta-chip subtle">${escapeHtml(provider.api || '未知协议')}</span>
+                          <span class="meta-chip subtle">预设 ${escapeHtml(getPresets().find((preset) => preset.id === chosenPresetId)?.name || '未选')}</span>
+                          <span class="meta-chip subtle">${providerExpanded ? '点击收起' : '点击展开'}</span>
+                        </div>
+                      </button>
+                      <div class="provider-collapsed-line">
+                        <span>当前密钥 ${escapeHtml(provider.apiKeyMasked || '空')}</span>
+                        <span>${escapeHtml(provider.baseUrl || '无中转地址')}</span>
+                      </div>
+                      ${
+                        providerExpanded
+                          ? `
+                            <div class="provider-editor-body">
+                              <label>API Key
+                                <div class="input-row">
+                                  <input type="${isSecretVisible(presetChoiceKey(agent.id, provider.id)) ? 'text' : 'password'}" name="apiKey" value="${escapeHtml(provider.apiKey)}" autocomplete="off" spellcheck="false" />
+                                  <button class="ghost-button" type="button" data-action="toggle-secret" data-secret-id="${escapeHtml(presetChoiceKey(agent.id, provider.id))}">${isSecretVisible(presetChoiceKey(agent.id, provider.id)) ? '隐藏' : '显示'}</button>
+                                </div>
+                              </label>
+                              <label>中转地址
+                                <input name="baseUrl" value="${escapeHtml(provider.baseUrl)}" autocomplete="off" spellcheck="false" />
+                              </label>
+                              <label>切换用预设
+                                <select data-provider-preset-select="${escapeHtml(provider.id)}">
+                                  <option value="">不选择</option>
+                                  ${getPresets()
+                                    .map(
+                                      (preset) => `
+                                        <option value="${escapeHtml(preset.id)}" ${preset.id === chosenPresetId ? 'selected' : ''}>${escapeHtml(preset.name)}</option>
+                                      `,
+                                    )
+                                    .join('')}
+                                </select>
+                              </label>
+                              <div class="row-actions wrap">
+                                <button class="ghost-button" type="button" data-action="capture-provider" data-provider-id="${escapeHtml(provider.id)}">抓成预设</button>
+                                <div class="button-row">
+                                  <button class="ghost-button" type="button" data-action="apply-preset-current" data-provider-id="${escapeHtml(provider.id)}">套给当前</button>
+                                  <button class="ghost-button" type="button" data-action="apply-preset-all" data-provider-id="${escapeHtml(provider.id)}">同名全量</button>
+                                  <button type="submit">保存通道</button>
+                                </div>
+                              </div>
+                            </div>
+                          `
+                          : ''
+                      }
+                    </form>
+                  `;
+                })
+                .join('')}
+            </div>
+          `
+          : ''
+      }
     </section>
   `;
 }
@@ -1027,6 +1067,23 @@ function renderMarkdownPanel(agent) {
         </div>
         <span>${files.length} 个</span>
       </div>
+      <details class="score-guide">
+        <summary>分值怎么来的</summary>
+        <div class="score-guide-body">
+          <p>起始分固定是 40，然后按文件名、路径、更新时间和体积叠加或扣减。</p>
+          <ul>
+            <li><code>AGENTS.md</code> +180，<code>HEARTBEAT.md</code> +160，<code>README.md</code> +120。</li>
+            <li><code>MEMORY.md</code>、<code>SYSTEM.md</code>、<code>MISSION.md</code>、<code>PROMPT.md</code> 这类核心说明文件 +110。</li>
+            <li>名字里带 <code>todo / task / plan / rule / guide / manual / policy</code> 这类规划或规则词，+90。</li>
+            <li>路径命中 <code>/skills/</code> +60，命中 <code>/agent/</code> 或 <code>/openclaw/</code> +20。</li>
+            <li>路径像 <code>daily / journal / chat / conversation / report / notes</code> 这类日常记录，-35。</li>
+            <li>路径像 <code>archive / bak / backup / tmp / draft / old / history</code> 这类归档或临时文件，-40。</li>
+            <li>文件路径里带日期，再 -24。</li>
+            <li>3 天内改过 +16，14 天内改过 +8；超过 120 KB -8，超过 400 KB -18。</li>
+            <li>最后按阈值分组：150 以上是“核心”，95 以上是“重点”，55 以上是“常用”，其余是“其他”。</li>
+          </ul>
+        </div>
+      </details>
       <div class="doc-shell">
         <div class="editor-card">
           <div class="surface-scroll doc-list-scroll">
@@ -1232,11 +1289,28 @@ async function handleAction(action, element) {
 
     if (action === 'select-agent') {
       state.selectedAgentId = element.dataset.agentId;
+      state.agentPanelExpanded = {
+        ...state.agentPanelExpanded,
+        [state.selectedAgentId]: state.selectedAgentId === 'main',
+      };
+      state.providerPanelExpanded = Object.fromEntries(
+        Object.entries(state.providerPanelExpanded).filter(([key]) => !key.startsWith(`${state.selectedAgentId}:`)),
+      );
       state.selectedCronId = '';
       state.selectedFilePath = '';
       state.fileContent = '';
       state.fileDirty = false;
       await refreshOverview();
+      return;
+    }
+
+    if (action === 'toggle-agent-panel') {
+      const agentId = element.dataset.agentId || agent.id;
+      state.agentPanelExpanded = {
+        ...state.agentPanelExpanded,
+        [agentId]: !isAgentPanelExpanded(agentId),
+      };
+      render();
       return;
     }
 
@@ -1337,6 +1411,18 @@ async function handleAction(action, element) {
       });
       setNotice('ok', 'Cron 开关已切换');
       await refreshOverview();
+      return;
+    }
+
+    if (action === 'toggle-provider-panel') {
+      const agentId = element.dataset.agentId || agent.id;
+      const providerId = element.dataset.providerId;
+      const key = providerPanelKey(agentId, providerId);
+      state.providerPanelExpanded = {
+        ...state.providerPanelExpanded,
+        [key]: !isProviderPanelExpanded(agentId, providerId),
+      };
+      render();
       return;
     }
 

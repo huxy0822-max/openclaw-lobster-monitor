@@ -370,7 +370,7 @@ button[type="submit"]:hover,
 .usage-grid,
 .trend-grid,
 .hero-stat-row,
-.agent-overview-grid,
+.agent-summary-strip,
 .workspace-grid,
 .task-overview,
 .skill-columns,
@@ -751,24 +751,107 @@ textarea::-webkit-scrollbar-track {
   margin-top: 7px;
 }
 
-.agent-overview-grid {
+.agent-summary-strip {
+  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.summary-pill {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 243, 236, 0.95));
+}
+
+.summary-pill span,
+.summary-pill small {
+  display: block;
+  color: var(--muted);
+}
+
+.summary-pill strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.02rem;
+  line-height: 1.15;
+}
+
+.summary-pill small {
+  margin-top: 4px;
+}
+
+.agent-fold-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px dashed rgba(17, 24, 39, 0.16);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .provider-wall {
   display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 12px;
 }
 
 .provider-editor {
   display: grid;
   gap: 12px;
-  padding: 18px;
-  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  border-radius: 20px;
   border: 1px solid rgba(17, 24, 39, 0.08);
   background: var(--paper-strong);
+}
+
+.provider-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.provider-toggle p {
+  margin: 6px 0 0;
+}
+
+.provider-toggle-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.provider-collapsed-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.provider-collapsed-line span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-editor-body {
+  display: grid;
+  gap: 12px;
 }
 
 .provider-meta {
@@ -873,7 +956,7 @@ textarea::-webkit-scrollbar-track {
 }
 
 .message-scroll {
-  max-height: 260px;
+  max-height: 220px;
   padding: 16px;
   border-radius: 20px;
   border: 1px solid rgba(17, 24, 39, 0.08);
@@ -892,7 +975,7 @@ textarea::-webkit-scrollbar-track {
 .timeline-scroll {
   display: grid;
   gap: 12px;
-  max-height: 540px;
+  max-height: 420px;
 }
 
 .timeline-item {
@@ -905,7 +988,7 @@ textarea::-webkit-scrollbar-track {
 }
 
 .timeline-copy {
-  max-height: 126px;
+  max-height: 104px;
   padding-right: 4px;
 }
 
@@ -1173,6 +1256,45 @@ textarea::-webkit-scrollbar-track {
   border: 0;
   border-top: 1px solid rgba(17, 24, 39, 0.1);
   margin: 18px 0;
+}
+
+.score-guide {
+  margin: 0 0 16px;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.score-guide summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.score-guide-body {
+  padding: 0 16px 16px;
+  color: var(--muted);
+  line-height: 1.72;
+}
+
+.score-guide-body p {
+  margin: 0 0 10px;
+}
+
+.score-guide-body ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.score-guide-body li + li {
+  margin-top: 8px;
+}
+
+.score-guide-body code {
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.07);
+  font-family: "SF Mono", "JetBrains Mono", monospace;
 }
 
 .skill-columns {
@@ -1543,7 +1665,7 @@ textarea::-webkit-scrollbar-track {
   .skill-columns,
   .hero-headline,
   .hero-stat-row,
-  .agent-overview-grid,
+  .agent-summary-strip,
   .markdown-split,
   .history-shell,
   .history-meta-grid {
@@ -1601,6 +1723,17 @@ textarea::-webkit-scrollbar-track {
   .surface,
   .sidebar-shell {
     padding: 20px;
+  }
+
+  .provider-toggle,
+  .provider-collapsed-line,
+  .agent-fold-note {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .provider-toggle-meta {
+    justify-content: flex-start;
   }
 }
 
