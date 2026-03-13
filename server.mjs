@@ -4,8 +4,11 @@ import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildOverview } from './lib/monitor-data.mjs';
 import {
+  applyProviderPreset,
+  deleteProviderPreset,
   readMarkdownFile,
   toggleLaunchdService,
+  upsertProviderPreset,
   updateAgentHeartbeat,
   updateAgentProvider,
   updateCronJob,
@@ -37,7 +40,11 @@ async function readBody(request) {
 }
 
 async function serveStatic(response, pathname) {
-  const target = pathname === '/' ? '/index.html' : pathname;
+  const routeMap = {
+    '/': '/index.html',
+    '/monitor': '/monitor.html',
+  };
+  const target = routeMap[pathname] ?? pathname;
   const filePath = path.join(PUBLIC_DIR, target.replace(/^\/+/, ''));
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(`${PUBLIC_DIR}${path.sep}`) && resolved !== PUBLIC_DIR) {
@@ -55,6 +62,12 @@ async function serveStatic(response, pathname) {
           ? 'text/css; charset=utf-8'
           : extension === '.js'
             ? 'application/javascript; charset=utf-8'
+            : extension === '.png'
+              ? 'image/png'
+              : extension === '.jpg' || extension === '.jpeg'
+                ? 'image/jpeg'
+                : extension === '.svg'
+                  ? 'image/svg+xml'
             : 'application/octet-stream';
     sendText(response, 200, content, type);
   } catch {
@@ -69,6 +82,27 @@ const server = http.createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && pathname === '/api/overview') {
       sendJson(response, 200, await buildOverview());
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/presets') {
+      const body = await readBody(request);
+      sendJson(response, 200, await upsertProviderPreset(body));
+      return;
+    }
+
+    const presetMatch = pathname.match(/^\/api\/presets\/([^/]+)$/);
+    if (presetMatch && request.method === 'DELETE') {
+      const [, presetId] = presetMatch.map(decodeURIComponent);
+      sendJson(response, 200, await deleteProviderPreset(presetId));
+      return;
+    }
+
+    const presetApplyMatch = pathname.match(/^\/api\/presets\/([^/]+)\/apply$/);
+    if (presetApplyMatch && request.method === 'POST') {
+      const [, presetId] = presetApplyMatch.map(decodeURIComponent);
+      const body = await readBody(request);
+      sendJson(response, 200, await applyProviderPreset(presetId, body));
       return;
     }
 

@@ -3,11 +3,127 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>小龙虾总控台</title>
+    <title>OpenClaw 小龙虾总控台</title>
+    <meta name="description" content="本地可视化监视器，用来管理 OpenClaw 每只小龙虾的 API Key、长期任务、Markdown 和记忆与技能。" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/app.js"></script>
+  <body class="landing-body">
+    <div class="landing-shell">
+      <header class="landing-topbar">
+        <a class="brand-lockup" href="/">
+          <span class="brand-mark">OC</span>
+          <span class="brand-copy">
+            <strong>小龙虾总控台</strong>
+            <small>OpenClaw 本地监视器</small>
+          </span>
+        </a>
+        <nav class="topbar-actions">
+          <a class="ghost-button" href="/monitor">进入监视器</a>
+          <a class="ghost-button" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+      <main class="landing-main">
+        <section class="landing-hero">
+          <div class="landing-copy">
+            <p class="eyebrow">发布页</p>
+            <h1>一个真正给 OpenClaw 主控用的本地可视化面板</h1>
+            <p class="landing-lead">
+              核心目标很直接：在网页里切每只小龙虾的 API Key，看它们的 token、心跳、Cron、Markdown 和记忆、技能与常驻服务状态，而且整个查询与替换过程不走 AI。
+            </p>
+            <div class="landing-actions">
+              <a class="cta-button" href="/monitor">打开总控台</a>
+              <a class="ghost-button" href="https://github.com/huxy0822-max/openclaw-lobster-monitor" target="_blank" rel="noreferrer">查看项目说明</a>
+            </div>
+            <div class="hero-metrics" id="landing-summary">
+              <article class="hero-metric">
+                <span>加载中</span>
+                <strong>--</strong>
+                <small>正在读取本地 OpenClaw 状态</small>
+              </article>
+            </div>
+          </div>
+          <div class="landing-visual">
+            <div class="visual-card">
+              <p class="eyebrow">核心能力</p>
+              <h2>切 Key、看任务、查异常</h2>
+              <ul class="feature-list">
+                <li>每个 agent 独立修改和一键切换 API Key</li>
+                <li>直接看总 Token、今天、最近几小时和 7 天走势</li>
+                <li>统一管理心跳、Cron、Markdown 和记忆文件</li>
+                <li>列出共享技能、独享技能和 launchd 常驻服务</li>
+              </ul>
+            </div>
+            <div class="visual-stack">
+              <article class="mini-panel">
+                <span>本地原则</span>
+                <strong>0 额外 AI 查询</strong>
+                <small>所有查找、替换和统计都直接走本地文件。</small>
+              </article>
+              <article class="mini-panel">
+                <span>使用入口</span>
+                <strong>/monitor</strong>
+                <small>监视器页和项目发布页分开，定位更清晰。</small>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="landing-showcase">
+          <div class="section-title">
+            <p class="eyebrow">界面预览</p>
+            <h2>总览、切 Key 和任务管理都可以直接看</h2>
+          </div>
+          <div class="showcase-grid">
+            <figure class="showcase-card">
+              <img src="/assets/screenshots/landing-home.png" alt="项目发布页截图" />
+              <figcaption>正式入口页，先讲清楚这是什么，再进入总控台。</figcaption>
+            </figure>
+            <figure class="showcase-card">
+              <img src="/assets/screenshots/monitor-overview.png" alt="监视器总览与 Key 控制截图" />
+              <figcaption>舰队总览、告警中心、Key 预设池和当前通道切换。</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="landing-features">
+          <div class="section-title">
+            <p class="eyebrow">功能分区</p>
+            <h2>重点不是演示，而是让你真的拿它盯 OpenClaw</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <h3>Key 总控</h3>
+              <p>支持预设池、抓取当前通道、一键套给当前 agent 或同名通道全量分发。</p>
+            </article>
+            <article class="feature-card">
+              <h3>运行态监控</h3>
+              <p>同时显示总 token、今天、最近 1 小时、3 小时、6 小时、24 小时和 7 天走势。</p>
+            </article>
+            <article class="feature-card">
+              <h3>长期任务</h3>
+              <p>直接改 heartbeat、开关 Cron、看最近运行摘要和 lastError，不需要翻文件。</p>
+            </article>
+            <article class="feature-card">
+              <h3>记忆与技能</h3>
+              <p>网页里直接查找替换 Markdown，查看共享技能、独享技能和当前生效技能。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="landing-live">
+          <div class="section-title">
+            <p class="eyebrow">实时态势</p>
+            <h2>当前这台机器上的 OpenClaw 状态</h2>
+          </div>
+          <div class="live-grid" id="landing-live-grid">
+            <article class="live-card">
+              <strong>加载中</strong>
+              <p>正在从本地接口读取状态。</p>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/landing.js"></script>
   </body>
 </html>
